@@ -1,0 +1,14 @@
+.env
+
+# --- Dataset downloads ---
+My-First-Project-*/
+COCO-Dataset-1/
+*.zip
+
+# --- Output files ---
+output/
+logs/
+*.log
+
+# --- Environment ---
+supervision-env/
