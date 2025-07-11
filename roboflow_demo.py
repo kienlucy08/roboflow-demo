@@ -21,7 +21,7 @@ if __name__ == "__main__":
     #data info
     annotation_file = Path(dataset.location) / "train" / "_annotations.coco.json"
     if not annotation_file.exists():
-        print("⚠️ Annotation file missing in train/. Creating train split from test...")
+        print(" Annotation file missing in train/. Creating train split from test...")
         os.makedirs(Path(dataset.location) / "train", exist_ok=True)
 
         # Move images from test/ to train/
