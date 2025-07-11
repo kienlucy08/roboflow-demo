@@ -1,15 +1,13 @@
 .env
 
-# --- Dataset downloads ---
+# Ignore Roboflow dataset folders
 My-First-Project-*/
-COCO-Dataset-1*/
-limited_dataset*/
-*.zip
+COCO-Dataset-*/
+limited_dataset/
 
-# --- Output files ---
+# Ignore downloaded models and outputs
+rf-detr-base.pth
 output/
-logs/
-*.log
 
 # --- Environment ---
 supervision-env/
