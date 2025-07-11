@@ -3,6 +3,7 @@
 # --- Dataset downloads ---
 My-First-Project-*/
 COCO-Dataset-1/
+limited_dataset/
 *.zip
 
 # --- Output files ---
