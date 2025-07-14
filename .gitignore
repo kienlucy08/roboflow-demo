@@ -6,7 +6,7 @@ COCO-Dataset-*/
 limited_dataset/
 
 # Ignore downloaded models and outputs
-rf-detr-base.pth
+*.pth
 output/
 
 # --- Environment ---
