@@ -51,26 +51,32 @@ if __name__ == "__main__":
     # Add dummy validation split to avoid crash
     val_dir = os.path.join(dataset.location, "valid")
     os.makedirs(val_dir, exist_ok=True)
+
+    # ✅ Copy images over too
+    for img_path in (Path(dataset.location) / "train").glob("*.jpg"):
+        shutil.copy(img_path, Path(val_dir) / img_path.name)
+
+    # And copy the annotation file
     shutil.copy(
         os.path.join(dataset.location, "train", "_annotations.coco.json"),
         os.path.join(val_dir, "_annotations.coco.json")
     )
 
+
     # Train
-    model.train(dataset_dir=dataset.location, epochs=15, batch_size=4, lr=1e-4, eval=False)
+    model.train(dataset_dir=dataset.location, epochs=1, batch_size=4, lr=1e-4, eval=False)
 
 
 
+    url = "https://media.roboflow.com/notebooks/examples/dog-2.jpeg"
 
-# url = "https://media.roboflow.com/notebooks/examples/dog-2.jpeg"
+    image = Image.open(io.BytesIO(requests.get(url).content))
+    detections = model.predict(image, threshold=0.5)
 
-# image = Image.open(io.BytesIO(requests.get(url).content))
-# detections = model.predict(image, threshold=0.5)
+    annotated_image = image.copy()
+    annotated_image = sv.BoxAnnotator().annotate(annotated_image, detections)
+    annotated_image = sv.LabelAnnotator().annotate(annotated_image, detections)
 
-# annotated_image = image.copy()
-# annotated_image = sv.BoxAnnotator().annotate(annotated_image, detections)
-# annotated_image = sv.LabelAnnotator().annotate(annotated_image, detections)
+    sv.plot_image(annotated_image)
 
-# sv.plot_image(annotated_image)
-
-# print(sv.__version__)
+    print(sv.__version__)
