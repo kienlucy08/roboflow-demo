@@ -52,7 +52,7 @@ if __name__ == "__main__":
     val_dir = os.path.join(dataset.location, "valid")
     os.makedirs(val_dir, exist_ok=True)
 
-    # ✅ Copy images over too
+    # Copy images over too
     for img_path in (Path(dataset.location) / "train").glob("*.jpg"):
         shutil.copy(img_path, Path(val_dir) / img_path.name)
 
