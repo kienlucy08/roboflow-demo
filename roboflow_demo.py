@@ -1,82 +1,99 @@
-import io
 import os
-import requests
-import supervision as sv
-from PIL import Image
-from rfdetr import RFDETRBase
-from roboflow import Roboflow
 import json
-import shutil
 from pathlib import Path
+from PIL import Image
+from collections import defaultdict
 
-ROBOFLOW_KEY = os.getenv("ROBOFLOW_KEY")
-
-if __name__ == "__main__":
-    # authenticate
-    rf = Roboflow(api_key=ROBOFLOW_KEY)
-    project = rf.workspace("roboflowlearn").project("my-first-project-c5pgo")
-
-    # download
-    dataset = project.version(2).download("coco")
-    #data info
-    annotation_file = Path(dataset.location) / "train" / "_annotations.coco.json"
-    if not annotation_file.exists():
-        print(" Annotation file missing in train/. Creating train split from test...")
-        os.makedirs(Path(dataset.location) / "train", exist_ok=True)
-
-        # Move images from test/ to train/
-        test_images = list((Path(dataset.location) / "test").glob("*.jpg"))
-        for img in test_images:
-            shutil.copy(img, Path(dataset.location) / "train" / img.name)
-
-        # Move annotation file from test/ to train/
-        test_ann = Path(dataset.location) / "test" / "_annotations.coco.json"
-        shutil.copy(test_ann, Path(dataset.location) / "train" / "_annotations.coco.json")
-
-    with open(Path(dataset.location) / "train" / "_annotations.coco.json") as f:
-        coco = json.load(f)
-
-    print(f"Images: {len(coco.get('images', []))}")
-    print(f"Annotations: {len(coco.get('annotations', []))}")
-    print(f"Categories: {len(coco.get('categories', []))}")
-
-    model = RFDETRBase()
-    history = []
-
-    def callback2(data):
-        history.append(data)
-
-    model.callbacks["on_fit_epoch_end"].append(callback2)
-
-    # Add dummy validation split to avoid crash
-    val_dir = os.path.join(dataset.location, "valid")
-    os.makedirs(val_dir, exist_ok=True)
-
-    # Copy images over too
-    for img_path in (Path(dataset.location) / "train").glob("*.jpg"):
-        shutil.copy(img_path, Path(val_dir) / img_path.name)
-
-    # And copy the annotation file
-    shutil.copy(
-        os.path.join(dataset.location, "train", "_annotations.coco.json"),
-        os.path.join(val_dir, "_annotations.coco.json")
-    )
+from roboflow import Roboflow
+from rfdetr import RFDETRBase
 
 
-    # Train
-    model.train(dataset_dir=dataset.location, epochs=1, batch_size=4, lr=1e-4, eval=False)
+def iou(boxA, boxB):
+    # box = [x, y, w, h]
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
+    yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
+
+    interW = max(0, xB - xA)
+    interH = max(0, yB - yA)
+    interArea = interW * interH
+
+    boxAArea = boxA[2] * boxA[3]
+    boxBArea = boxB[2] * boxB[3]
+
+    union = boxAArea + boxBArea - interArea
+    return interArea / union if union > 0 else 0
 
 
+def evaluate_predictions(ground_truths, predictions, iou_thresh=0.5):
+    TP = 0
+    FP = 0
+    FN = 0
 
-    url = "https://media.roboflow.com/notebooks/examples/dog-2.jpeg"
+    matched_gt = set()
 
-    image = Image.open(io.BytesIO(requests.get(url).content))
-    detections = model.predict(image, threshold=0.5)
+    for pred_box, pred_cls in predictions:
+        match_found = False
+        for idx, (gt_box, gt_cls) in enumerate(ground_truths):
+            if idx in matched_gt:
+                continue
+            if pred_cls == gt_cls and iou(pred_box, gt_box) >= iou_thresh:
+                TP += 1
+                matched_gt.add(idx)
+                match_found = True
+                break
+        if not match_found:
+            FP += 1
 
-    annotated_image = image.copy()
-    annotated_image = sv.BoxAnnotator().annotate(annotated_image, detections)
-    annotated_image = sv.LabelAnnotator().annotate(annotated_image, detections)
+    FN = len(ground_truths) - len(matched_gt)
+    return TP, FP, FN
 
-    sv.plot_image(annotated_image)
 
-    print(sv.__version__)
+# === Roboflow Setup ===
+ROBOFLOW_KEY = os.getenv("ROBOFLOW_KEY")  # Or hardcode
+rf = Roboflow(api_key=ROBOFLOW_KEY)
+project = rf.workspace("roboflowlearn").project("birds-vs-drones-abtzu")
+dataset = project.version(1).download("coco")
+
+# Load test annotations
+test_dir = Path(dataset.location) / "test"
+ann_path = test_dir / "_annotations.coco.json"
+with open(ann_path) as f:
+    coco = json.load(f)
+
+image_map = {img["id"]: img["file_name"] for img in coco["images"]}
+gt_by_image = defaultdict(list)
+for ann in coco["annotations"]:
+    gt_by_image[ann["image_id"]].append((ann["bbox"], ann["category_id"]))
+
+# Load your model
+model = RFDETRBase()
+
+# Evaluate
+total_TP = total_FP = total_FN = 0
+
+for img_id, img_name in image_map.items():
+    img_path = test_dir / img_name
+    image = Image.open(img_path)
+    preds = model.predict(image, threshold=0.5)
+
+    pred_boxes = [
+        (p[0], p[1]) for p in preds  # p = (xywh, class_id)
+    ]
+    gts = gt_by_image[img_id]
+    TP, FP, FN = evaluate_predictions(gts, pred_boxes)
+    total_TP += TP
+    total_FP += FP
+    total_FN += FN
+
+# Calculate final metrics
+precision = total_TP / (total_TP + total_FP) if (total_TP + total_FP) else 0
+recall = total_TP / (total_TP + total_FN) if (total_TP + total_FN) else 0
+f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) else 0
+
+print("\n📊 Evaluation Results (Roboflow Test Set)")
+print(f"Precision: {precision:.3f}")
+print(f"Recall:    {recall:.3f}")
+print(f"F1 Score:  {f1:.3f}")
+
