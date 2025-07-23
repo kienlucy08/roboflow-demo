@@ -1,14 +1,9 @@
 .env
 
-# Ignore Roboflow dataset folders
-My-First-Project-*/
-COCO-Dataset-*/
-limited_dataset/
-
 # Ignore downloaded models and outputs
 *.pth
-output/
 
 # --- Environment ---
 supervision-env/
 Birds-Vs-Drones-1*/
+Birds-Vs-Drones-2*/
